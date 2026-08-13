@@ -1,0 +1,127 @@
+{
+  "name": "retest",
+  "targetProcessName": "SampleTargetApp",
+  "targetWindowTitle": "Sample Insurance Application",
+  "steps": [
+    {
+      "order": 1,
+      "kind": "Action",
+      "locator": {
+        "strategy": "ControlTypeNameOrdinal",
+        "automationId": null,
+        "controlType": "TabItem",
+        "name": "Vehicle Details",
+        "ordinal": 0
+      },
+      "action": "Select",
+      "assertion": null,
+      "value": null,
+      "description": "Select on TabItem (Vehicle Details#0)"
+    },
+    {
+      "order": 2,
+      "kind": "Action",
+      "locator": {
+        "strategy": "ControlTypeNameOrdinal",
+        "automationId": null,
+        "controlType": "TabItem",
+        "name": "Personal Information",
+        "ordinal": 0
+      },
+      "action": "Select",
+      "assertion": null,
+      "value": null,
+      "description": "Select on TabItem (Personal Information#0)"
+    },
+    {
+      "order": 3,
+      "kind": "Action",
+      "locator": {
+        "strategy": "AutomationId",
+        "automationId": "txtFullName",
+        "controlType": "Edit",
+        "name": null,
+        "ordinal": null
+      },
+      "action": "TypeText",
+      "assertion": null,
+      "value": "jitendar",
+      "description": "TypeText on Edit (txtFullName)"
+    },
+    {
+      "order": 4,
+      "kind": "Action",
+      "locator": {
+        "strategy": "ControlTypeNameOrdinal",
+        "automationId": null,
+        "controlType": "TabItem",
+        "name": "Vehicle Details",
+        "ordinal": 0
+      },
+      "action": "Select",
+      "assertion": null,
+      "value": null,
+      "description": "Select on TabItem (Vehicle Details#0)"
+    },
+    {
+      "order": 5,
+      "kind": "Action",
+      "locator": {
+        "strategy": "ControlTypeNameOrdinal",
+        "automationId": null,
+        "controlType": "TabItem",
+        "name": "Personal Information",
+        "ordinal": 0
+      },
+      "action": "Select",
+      "assertion": null,
+      "value": null,
+      "description": "Select on TabItem (Personal Information#0)"
+    },
+    {
+      "order": 6,
+      "kind": "Action",
+      "locator": {
+        "strategy": "ControlTypeNameOrdinal",
+        "automationId": null,
+        "controlType": "TabItem",
+        "name": "Vehicle Details",
+        "ordinal": 0
+      },
+      "action": "Select",
+      "assertion": null,
+      "value": null,
+      "description": "Select on TabItem (Vehicle Details#0)"
+    },
+    {
+      "order": 7,
+      "kind": "Action",
+      "locator": {
+        "strategy": "ControlTypeNameOrdinal",
+        "automationId": null,
+        "controlType": "TabItem",
+        "name": "Personal Information",
+        "ordinal": 0
+      },
+      "action": "Select",
+      "assertion": null,
+      "value": null,
+      "description": "Select on TabItem (Personal Information#0)"
+    },
+    {
+      "order": 8,
+      "kind": "Action",
+      "locator": {
+        "strategy": "ControlTypeNameOrdinal",
+        "automationId": null,
+        "controlType": "TabItem",
+        "name": "Vehicle Details",
+        "ordinal": 0
+      },
+      "action": "Select",
+      "assertion": null,
+      "value": null,
+      "description": "Select on TabItem (Vehicle Details#0)"
+    }
+  ]
+}
