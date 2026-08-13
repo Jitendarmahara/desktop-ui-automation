@@ -17,10 +17,12 @@ public partial class RecordTestWindow : Window
 {
     private ElementInspector? _inspector;
     private FlaUI.Core.AutomationElements.Window? _targetWindow;
+    private string _targetWindowTitle = string.Empty;
     private List<InspectableElement> _elements = new();
     private readonly List<TestStep> _steps = new();
     private IReadOnlyList<StepOption> _currentOptions = Array.Empty<StepOption>();
     private LiveRecorder? _liveRecorder;
+    private bool _pendingCaptureWasLost;
 
     public RecordTestWindow()
     {
@@ -63,15 +65,24 @@ public partial class RecordTestWindow : Window
             var titleFilter = string.IsNullOrWhiteSpace(TitleFilterBox.Text) ? null : TitleFilterBox.Text.Trim();
             _targetWindow = _inspector.Attach(processName, titleFilter, TimeSpan.FromSeconds(10));
 
-            _liveRecorder = new LiveRecorder(_inspector.Automation, _inspector, _targetWindow, OnActionCaptured);
+            _liveRecorder = new LiveRecorder(_inspector.Automation, _inspector, _targetWindow, OnActionCaptured, OnPendingCaptureLost);
             _liveRecorder.Start();
 
             RefreshButton.IsEnabled = true;
+            // Enabled here rather than only once a step exists: Finish & Save also needs to be
+            // reachable when nothing has finalized into a step yet but a live capture is still
+            // pending, since clicking it is what flushes that pending capture (see OnFinishClick).
+            FinishButton.IsEnabled = true;
             RefreshElements();
 
             AttachPanel.Visibility = Visibility.Collapsed;
             RecordingStatusPanel.Visibility = Visibility.Visible;
-            TargetNameText.Text = _targetWindow.Title;
+            // Captured once, here, rather than re-read live at save time: if the target app
+            // has since closed, a live property read against its now-dead UIA element throws
+            // (observed: COM error 0x80040201), which was surfacing as "Finish & Save shows
+            // both dialogs through to completion but the file never actually gets written."
+            _targetWindowTitle = _targetWindow.Title;
+            TargetNameText.Text = _targetWindowTitle;
             StatusText.Text = "Just use the app normally. Button clicks and assertions need " +
                                "\"Add manual step\" below.";
         }
@@ -89,8 +100,13 @@ public partial class RecordTestWindow : Window
 
     private void OnManualExpanderExpanded(object sender, RoutedEventArgs e) => RefreshElements();
 
-    private void UpdateStepCount() =>
+    private void UpdateStepCount()
+    {
         StepCountText.Text = _steps.Count == 1 ? "1 step captured" : $"{_steps.Count} steps captured";
+        // Forward progress since any earlier lost-capture warning — let "Nothing to save yet."
+        // apply normally again for whatever happens next.
+        _pendingCaptureWasLost = false;
+    }
 
     private void RefreshElements()
     {
@@ -219,14 +235,46 @@ public partial class RecordTestWindow : Window
         });
     }
 
+    // Called when a pending typed edit couldn't be turned into a step at all — most likely the
+    // target app closed before the edit was finalized. There's no live element left to build a
+    // valid locator from at that point, so the edit genuinely can't be recorded; this at least
+    // makes that failure visible instead of the value just silently not showing up anywhere.
+    private void OnPendingCaptureLost(string typedValue)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _pendingCaptureWasLost = true;
+            StatusText.Text = string.IsNullOrEmpty(typedValue)
+                ? "A pending edit was lost — the target app closed before it could be captured."
+                : $"A pending edit ('{typedValue}') was lost — the target app closed before it could be captured.";
+        });
+    }
+
     private void OnFinishClick(object sender, RoutedEventArgs e)
     {
-        if (_steps.Count == 0 || _targetWindow is null)
+        if (_targetWindow is null)
         {
             return;
         }
 
+        // Flush before the count check, not after: a still-pending live capture (e.g. text
+        // just typed, focus never moved away yet) doesn't count toward _steps until this
+        // finalizes it, so checking count first could reject a click that would have had
+        // something to save.
         _liveRecorder?.Flush();
+
+        if (_steps.Count == 0)
+        {
+            // _pendingCaptureWasLost isn't reset here: the loss may have already happened (and
+            // already been reported) via a focus-change well before this click, not necessarily
+            // during this Flush() call — don't clobber that still-unread, more specific message
+            // with a generic "nothing to save" just because nothing new happened *this* click.
+            if (!_pendingCaptureWasLost)
+            {
+                StatusText.Text = "Nothing to save yet.";
+            }
+            return;
+        }
 
         try
         {
@@ -250,7 +298,7 @@ public partial class RecordTestWindow : Window
                 return;
             }
 
-            var testCase = TestCase.Create(name, ProcessNameBox.Text.Trim(), _targetWindow.Title, _steps);
+            var testCase = TestCase.Create(name, ProcessNameBox.Text.Trim(), _targetWindowTitle, _steps);
             TestSerializer.Save(testCase, saveDialog.FileName);
             MessageBox.Show(this, $"Saved '{name}' with {_steps.Count} step(s) to:\n{saveDialog.FileName}",
                 "Test saved", MessageBoxButton.OK, MessageBoxImage.Information);
