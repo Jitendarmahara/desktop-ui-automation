@@ -1,3 +1,4 @@
+using System.Threading;
 using AutomationTool.Exceptions;
 using AutomationTool.Steps;
 using FlaUI.Core.AutomationElements;
@@ -7,6 +8,11 @@ namespace AutomationTool.Replay;
 /// <summary>Executes one action via UIA control patterns — never coordinates/pixels for identification.</summary>
 public static class ActionExecutor
 {
+    // Purely cosmetic pacing so TypeText visibly resembles typing during a replay instead of
+    // the whole value appearing instantly. Reliability is unaffected either way: every call is
+    // still a ValuePattern.SetValue property write, never a simulated keystroke.
+    private static readonly TimeSpan TypingCharDelay = TimeSpan.FromMilliseconds(35);
+
     public static void Execute(AutomationElement element, ActionType action, string? value)
     {
         if (element is null) throw new ArgumentNullException(nameof(element));
@@ -56,7 +62,23 @@ public static class ActionExecutor
             throw new AutomationToolException($"Element does not support text entry (no ValuePattern): {element.ControlType}.");
         }
 
-        element.Patterns.Value.Pattern.SetValue(value);
+        var pattern = element.Patterns.Value.Pattern;
+
+        if (value.Length == 0)
+        {
+            pattern.SetValue(string.Empty);
+            return;
+        }
+
+        // Each call replaces the field's full value with a longer prefix of the target text —
+        // the first character already overwrites whatever was there before, same as a real
+        // user typing over existing text. Still ValuePattern.SetValue throughout, so this is
+        // exactly as reliable as a single instant write, just paced to look like typing.
+        for (var i = 1; i <= value.Length; i++)
+        {
+            pattern.SetValue(value[..i]);
+            Thread.Sleep(TypingCharDelay);
+        }
     }
 
     private static void ExecuteToggle(AutomationElement element)
