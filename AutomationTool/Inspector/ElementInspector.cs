@@ -50,21 +50,59 @@ public sealed class ElementInspector : IDisposable
         {
             try
             {
-                var process = Process.GetProcessesByName(processName).FirstOrDefault(p => !p.HasExited);
-                if (process is not null)
+                // A stale instance left over from an earlier recording/run can still be alive
+                // alongside the one the user actually means to target. Silently guessing which
+                // one to attach to (e.g. "first found" or "most recently started") just turns
+                // the ambiguity into a confusing failure several steps later, when some other
+                // control isn't where this locator expects it to be. So: check every live
+                // candidate, and only proceed when exactly one of them qualifies.
+                var candidates = Process.GetProcessesByName(processName).Where(p => !p.HasExited).ToList();
+                var matches = new List<(int Pid, Window Window)>();
+
+                foreach (var candidate in candidates)
                 {
-                    var app = FlaUI.Core.Application.Attach(process.Id);
-                    var window = app.GetMainWindow(_automation, TimeSpan.FromSeconds(1));
-                    if (window is not null && TitleMatches(window, titleContains))
+                    try
                     {
-                        // A window that has never been brought to the foreground can leave
-                        // its client-area controls' UIA peers uncreated (observed: only the
-                        // native title-bar chrome was visible to UIA until this was added).
-                        // Focusing also matches how a real user would start automating.
-                        TryFocus(window);
-                        return window;
+                        var app = FlaUI.Core.Application.Attach(candidate.Id);
+                        var window = app.GetMainWindow(_automation, TimeSpan.FromSeconds(1));
+                        if (window is not null && TitleMatches(window, titleContains))
+                        {
+                            matches.Add((candidate.Id, window));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // This particular candidate isn't attachable right now (e.g. mid-exit) —
+                        // other candidates may still resolve, so don't abort the whole attempt.
+                        lastError = ex;
                     }
                 }
+
+                if (matches.Count == 1)
+                {
+                    var window = matches[0].Window;
+                    // A window that has never been brought to the foreground can leave
+                    // its client-area controls' UIA peers uncreated (observed: only the
+                    // native title-bar chrome was visible to UIA until this was added).
+                    // Focusing also matches how a real user would start automating.
+                    TryFocus(window);
+                    return window;
+                }
+
+                if (matches.Count > 1)
+                {
+                    var pids = string.Join(", ", matches.Select(m => m.Pid));
+                    var titleHint = string.IsNullOrEmpty(titleContains)
+                        ? " Narrow it down with a window-title filter, or close the extra instance(s)."
+                        : " Close the extra instance(s), or use a more specific window-title filter.";
+                    throw new AutomationToolException(
+                        $"Found {matches.Count} running '{processName}' processes that match (PIDs: {pids}) — " +
+                        $"refusing to guess which one to automate.{titleHint}");
+                }
+            }
+            catch (AutomationToolException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -82,12 +120,20 @@ public sealed class ElementInspector : IDisposable
     }
 
     /// <summary>Elements suitable for the point-and-click builder's numbered list.</summary>
-    public IReadOnlyList<InspectableElement> GetActionableElements(Window window)
+    /// <param name="includeOffscreen">
+    /// False (default) excludes elements on an inactive tab/page — right for the manual picker,
+    /// which should only offer things you could actually click right now. Pass true when
+    /// re-resolving an element whose action already happened while it WAS visible (e.g.
+    /// finalizing a text capture after the user has since switched tabs) — the edit is real and
+    /// already done; it shouldn't be discarded just because a later, unrelated action moved the
+    /// UI on before this one got a chance to finalize.
+    /// </param>
+    public IReadOnlyList<InspectableElement> GetActionableElements(Window window, bool includeOffscreen = false)
     {
         if (window is null) throw new ArgumentNullException(nameof(window));
         var ownerProcessId = GetOwnerProcessId(window);
         return WalkAll(window)
-            .Where(e => IsActionable(e, ownerProcessId))
+            .Where(e => IsActionable(e, ownerProcessId, includeOffscreen))
             .Select(e => new InspectableElement(e))
             .ToList();
     }
@@ -158,7 +204,7 @@ public sealed class ElementInspector : IDisposable
         return title is not null && title.IndexOf(titleContains, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
-    private static bool IsActionable(AutomationElement element, int? ownerProcessId)
+    private static bool IsActionable(AutomationElement element, int? ownerProcessId, bool includeOffscreen = false)
     {
         if (!SupportedControlTypes.Contains(element.ControlType))
         {
@@ -181,7 +227,7 @@ public sealed class ElementInspector : IDisposable
             return false;
         }
 
-        return SafeReadBool(() => element.IsOffscreen) == false;
+        return includeOffscreen || SafeReadBool(() => element.IsOffscreen) == false;
     }
 
     private static string? SafeRead(AutomationElement element) => SafeRead(() => element.Name);
