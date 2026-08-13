@@ -1,0 +1,14 @@
+bin/
+obj/
+*.user
+.claude/settings.local.json
+.vs/
+.idea/
+*.suo
+*.userosscache
+*.sln.docstates
+[Bb]in/
+[Oo]bj/
+TestResults/
+publish/
+*.nupkg

@@ -1,0 +1,142 @@
+{
+  "name": "Insurance App Live Recording Flow",
+  "targetProcessName": "SampleTargetApp",
+  "targetWindowTitle": "Sample Insurance Application",
+  "steps": [
+    {
+      "order": 1,
+      "kind": "Action",
+      "locator": {
+        "strategy": "AutomationId",
+        "automationId": "txtFullName",
+        "controlType": "Edit",
+        "name": null,
+        "ordinal": null
+      },
+      "action": "TypeText",
+      "assertion": null,
+      "value": "Jitendar Mahara",
+      "description": "TypeText on Edit (txtFullName)"
+    },
+    {
+      "order": 2,
+      "kind": "Action",
+      "locator": {
+        "strategy": "AutomationId",
+        "automationId": "txtEmail",
+        "controlType": "Edit",
+        "name": null,
+        "ordinal": null
+      },
+      "action": "TypeText",
+      "assertion": null,
+      "value": "jitendar@example.com",
+      "description": "TypeText on Edit (txtEmail)"
+    },
+    {
+      "order": 3,
+      "kind": "Action",
+      "locator": {
+        "strategy": "ControlTypeNameOrdinal",
+        "automationId": null,
+        "controlType": "TabItem",
+        "name": "Vehicle Details",
+        "ordinal": 0
+      },
+      "action": "Select",
+      "assertion": null,
+      "value": null,
+      "description": "Select on TabItem (Vehicle Details#0)"
+    },
+    {
+      "order": 4,
+      "kind": "Action",
+      "locator": {
+        "strategy": "AutomationId",
+        "automationId": "txtMake",
+        "controlType": "Edit",
+        "name": null,
+        "ordinal": null
+      },
+      "action": "TypeText",
+      "assertion": null,
+      "value": "Toyota",
+      "description": "TypeText on Edit (txtMake)"
+    },
+    {
+      "order": 5,
+      "kind": "Action",
+      "locator": {
+        "strategy": "AutomationId",
+        "automationId": "txtModel",
+        "controlType": "Edit",
+        "name": null,
+        "ordinal": null
+      },
+      "action": "TypeText",
+      "assertion": null,
+      "value": "Corolla",
+      "description": "TypeText on Edit (txtModel)"
+    },
+    {
+      "order": 6,
+      "kind": "Action",
+      "locator": {
+        "strategy": "ControlTypeNameOrdinal",
+        "automationId": null,
+        "controlType": "TabItem",
+        "name": "Coverage \u0026 Review",
+        "ordinal": 0
+      },
+      "action": "Select",
+      "assertion": null,
+      "value": null,
+      "description": "Select on TabItem (Coverage \u0026 Review#0)"
+    },
+    {
+      "order": 7,
+      "kind": "Action",
+      "locator": {
+        "strategy": "AutomationId",
+        "automationId": "chkRoadside",
+        "controlType": "CheckBox",
+        "name": null,
+        "ordinal": null
+      },
+      "action": "Toggle",
+      "assertion": null,
+      "value": null,
+      "description": "Toggle on CheckBox (chkRoadside)"
+    },
+    {
+      "order": 8,
+      "kind": "Action",
+      "locator": {
+        "strategy": "AutomationId",
+        "automationId": "btnSubmit",
+        "controlType": "Button",
+        "name": null,
+        "ordinal": null
+      },
+      "action": "Click",
+      "assertion": null,
+      "value": null,
+      "description": "Click on Button (btnSubmit)"
+    },
+    {
+      "order": 9,
+      "kind": "Assertion",
+      "locator": {
+        "strategy": "ControlTypeNameOrdinal",
+        "automationId": null,
+        "controlType": "Text",
+        "name": "Application submitted! Reference #87787",
+        "ordinal": 0
+      },
+      "action": null,
+      "assertion": "VerifyTextEquals",
+      "value": "Application submitted! Reference #87787",
+      "description": "VerifyTextEquals on Text (Application submitted! Reference #87787#0)"
+    }
+  ]
+}
