@@ -174,6 +174,90 @@ when a control doesn't expose a stable one — both paths are exercised in the s
   confirmation text non-deterministic across app restarts (.NET randomizes string hashes per
   process) — replaced with a simple deterministic computation so the recorded assertion is
   actually repeatable.
+- If a stale `SampleTargetApp` instance from an earlier session is still running alongside a
+  fresh one, `Attach()`'s original "first process found" selection wasn't guaranteed to pick the
+  one actually being worked with — it could silently attach to the wrong instance, and the only
+  visible symptom was an unrelated-looking "Element was not found within the timeout" several
+  steps into a run. Fixed by checking every live candidate process against the title filter: if
+  exactly one matches, attach; if more than one does, fail immediately with the PIDs involved
+  instead of guessing. Multi-instance ambiguity is now a same-second, actionable error, not a
+  five-second mystery timeout.
+- Closing the target app before clicking "Finish & Save" let the name prompt and save-file
+  dialogs both complete normally, then failed the actual save with a cryptic COM error (0x80040201)
+  shown only in the recorder's small status label — easy to miss, so it looked like Finish & Save
+  "didn't save" even though every dialog worked. Cause: the save step re-read the target window's
+  `.Title` live via UIA at save time, which throws once the underlying process/window is gone.
+  Fixed by capturing the title once at attach time and reusing that cached value at save time,
+  instead of re-querying a possibly-dead window.
+- Not a bug, but worth calling out: **the tool never restarts or resets `SampleTargetApp`
+  between runs** — it automates whatever's already running. Traced a report of a replayed test
+  "showing previous data right after a tab switch, before any typing happened" to exactly this:
+  running one test, then running another against the *same* still-open target instance without
+  closing it in between, leaves whatever the first test typed sitting in those fields until the
+  second test's own steps overwrite them. Confirmed the replay engine itself is correct — reran
+  the same test against a freshly-launched target and checked every field's actual value after
+  every step; nothing stale, nothing appended, exact values only. Close and relaunch
+  `SampleTargetApp` before a run if a clean slate matters.
+- `TypeText` originally wrote a field's full value in one `ValuePattern.SetValue` call, which is
+  reliable but visually instant — watching a replay, the text just appears rather than looking
+  typed, which read as "the text never gets written, it just pops up." Confirmed step order and
+  field targeting were never actually wrong (traced a full before/after snapshot of every field
+  and the active tab around every step of an 8-step test against a fresh target — text only ever
+  appeared exactly on its own step, never early, never on the wrong field) before concluding the
+  complaint was about the *pacing*, not correctness. Changed `ActionExecutor.ExecuteTypeText` to
+  call `SetValue` once per additional character (35ms apart) instead of once for the whole
+  string — still exactly as reliable, since every call is still a UIA property write and never a
+  simulated keystroke, just paced to look like typing instead of appearing instantly.
+- A real data-loss bug, found via a scripted repro: if the target app closes while a just-typed
+  field's live capture is still "pending" (no focus change or Finish click has finalized it yet),
+  the edit was silently discarded — not even saved with an empty value — and if it was the only
+  thing captured so far, Finish & Save stayed permanently disabled with no way to save anything
+  else in the session either. Root cause was two-fold in `LiveRecorder`: (1) the debounce-timer
+  focus check held its lock during a live COM property read, which can stall for a dead target
+  and blocks `Flush()` (called from Finish & Save) from ever running; (2) once finalization did
+  run, the failed re-resolution against a dead window silently swallowed the edit entirely. Fixed
+  by moving the COM reads outside their locks (in both the focus check and the checkbox-toggle
+  poller, which had the same pattern), snapshotting each field's value as it's typed so there's a
+  fallback if the live re-read fails at finalization time, and surfacing an explicit "a pending
+  edit was lost" status message instead of silence when a value truly can't be recovered.
+  `Finish & Save` is now enabled as soon as recording starts (not just once a step exists), since
+  it's also what flushes a pending capture — so the button is never stuck unusable.
+- The most significant bug found this way: typing into one field, then switching tabs before
+  that field's capture had a chance to finalize (a completely normal recording flow: fill Name
+  and Email, then move to the next tab) could silently drop the edit entirely — reliably, with
+  the target app fully healthy the whole time, no crash involved. Root-caused by driving
+  `LiveRecorder` directly and logging every capture with a timestamp: `TryCapture`'s finalization
+  step re-resolves the field against a *fresh* walk of the UI tree, and WinForms genuinely removes
+  an inactive `TabPage`'s controls from that tree the moment you switch away — not just marks them
+  offscreen, they're unwalkable — so by the time the tab-switch's own handler flushed the pending
+  capture (which happens right after the switch, since the event only fires once the switch has
+  already taken effect), the field to re-resolve was already gone. No amount of "search harder"
+  or "also check offscreen elements" fixes this, since the element isn't in the tree to find at
+  all by then. Fixed at the source instead: `LiveRecorder` now builds the full `Locator` eagerly,
+  in `OnValueChanged`, while the field is still guaranteed present — not deferred to finalization
+  time — so finalizing later needs no re-resolution and can't fail this way. Verified with a
+  before/after trace of the exact reported sequence (switch tabs with no data yet, type Name and
+  Email, switch tabs again, type more) end-to-end through the real GUI: all 6 steps captured in
+  the correct order with exact values, and the saved test replayed cleanly with no premature data
+  anywhere. This also explains why some earlier "sees data before it should" reports weren't fully
+  resolved by the app-not-reset-between-runs explanation alone — this bug could produce that same
+  symptom (or a missing/misordered step) even on a freshly-restarted target.
+- A recorded test (`test4.json`) replayed correctly for its first 6 steps, then failed trying to
+  toggle a checkbox that only exists on the Coverage & Review tab — while the recording was still
+  sitting on Vehicle Details. The saved file had "Toggle chkRoadside" as step 7 and "Select
+  Coverage & Review" as step 8 — swapped from the order replay actually needs. Root cause: step
+  order is assigned as `_steps.Count + 1` at the moment each capture *finishes processing*, not
+  at the moment the underlying action actually happened — and different capture paths finish at
+  different speeds (a manual "Add Step" click is synchronous and immediate; a live tab-switch is
+  captured via a UI Automation event whose COM delivery latency isn't bounded). If the checkbox
+  was toggled via the manual picker right after a live tab-switch click, the manual capture can
+  win the race and end up numbered first even though the switch happened first chronologically.
+  Fixed this specific file directly (swapped the two steps, verified 8/8 passes cleanly). The
+  underlying race in the recorder itself is a known, harder architectural fix — reordering
+  capture-time processing to key off when the action was *detected* rather than when it finished
+  being handled — noted as follow-up work rather than made in-session, since it touches every
+  capture path for a same-session-only edge case with a low-risk, one-line workaround (record a
+  little slower right after a tab switch, or fix the file order directly as done here).
 
 ## What I'd do next with more time
 A scoped low-level mouse hook (hit-tested against actionable elements) specifically to close the
